@@ -1,0 +1,155 @@
+--- Question 1
+WITH joined_table AS (
+    SELECT * FROM `bitlabs-dab.I_CID_05.employees_2010`
+    UNION ALL
+    SELECT * from `bitlabs-dab.I_CID_05.employees_2011`
+),
+cleaned_data as(
+SELECT  *,
+  CAST(EmployeeID AS STRING) AS id, 
+  CAST(store_name AS string) AS store,
+  CAST(STATUS_YEAR AS STRING) AS statsyear
+FROM joined_table
+WHERE STATUS = 'ACTIVE'
+)
+---- Employee Rentention Rate
+select 
+(select count(EmployeeID) from cleaned_data WHERE EXTRACT(YEAR FROM orighiredate_key) <= 2010 and statsyear = '2011')/ 
+(select count(EmployeeID) from cleaned_data WHERE EXTRACT(YEAR FROM orighiredate_key) <= 2010 and statsyear = '2010') * 100 
+as retention_rate;
+---- Hence, the employee retention rate from 2010 to 2011 is 97,79%, which increases by 2% from the year before
+
+--- Question 2
+--- Company Growth Rate
+WITH joined_table AS (
+    SELECT * FROM `bitlabs-dab.I_CID_05.employees_2010`
+    UNION ALL
+    SELECT * from `bitlabs-dab.I_CID_05.employees_2011`
+),
+cleaned_data as(
+SELECT  *,
+  CAST(EmployeeID AS STRING) AS id, 
+  CAST(store_name AS string) AS store,
+  CAST(STATUS_YEAR AS STRING) AS statsyear
+FROM joined_table
+WHERE STATUS = 'ACTIVE'
+)
+SELECT 
+((SELECT count(EmployeeID) from cleaned_data WHERE statsyear = '2011') - (SELECT count(EmployeeID) from cleaned_data WHERE statsyear = '2010')) / (SELECT count(EmployeeID) from cleaned_data WHERE statsyear = '2011') *100 AS employee_growth
+
+---- By the data, we can conclude that the company growth rate is around 2.69% based on the increase number of employees, which increased by 1.14% compared to the last year growth
+
+--- Question 3
+--- Total Budget for Reward Program
+WITH joined_table AS (
+    SELECT * FROM `bitlabs-dab.I_CID_05.employees_2010`
+    UNION ALL
+    SELECT * from `bitlabs-dab.I_CID_05.employees_2011`
+),
+cleaned_data as(
+SELECT  *,
+  CAST(EmployeeID AS STRING) AS id, 
+  CAST(store_name AS string) AS store,
+  CAST(STATUS_YEAR AS STRING) AS statsyear
+FROM joined_table
+WHERE STATUS = 'ACTIVE' 
+),
+tenure_data as(
+select DISTINCT EmployeeID,
+  case
+      when date_diff(terminationdate_key, orighiredate_key, year) <= 5 then "tenure group 1"
+      when date_diff(terminationdate_key, orighiredate_key, year) >= 6 and date_diff(terminationdate_key, orighiredate_key, year) <= 10 then "tenure group 2"
+      when date_diff(terminationdate_key, orighiredate_key, year) >= 11 and date_diff(terminationdate_key, orighiredate_key, year) <= 15 then 'tenure group 3'
+    else 'tenure group 4' 
+  end as tenure_group
+FROM cleaned_data
+WHERE EXTRACT(YEAR FROM terminationdate_key) <= 2011
+GROUP BY tenure_group, EmployeeID
+),
+reward_data as (
+select EmployeeID, tenure_group,
+  case
+    when tenure_group = 'tenure group 1' then 100
+    when tenure_group = 'tenure group 2' then 200
+    when tenure_group = 'tenure group 3' then 300
+    else 400
+  end as tenure_reward
+from tenure_data),
+calculation_data as (
+select tenure_group, count(distinct employeeID) as employee_count, sum(tenure_reward) as budget,
+from reward_data
+group by tenure_group)
+select employee_count, concat('$', sum(employee_count * budget)) as allocation
+from calculation_data
+group by employee_count
+--- From the calculation, there are 4.458 employees that are eligible for the program.
+--- Hence, the budget that needs to be allocated by the company is estimated to be $198.793.400
+
+--- Question 4
+--- Employees Gender Across Age Group
+WITH joined_table AS (
+    SELECT * FROM `bitlabs-dab.I_CID_05.employees_2010`
+    UNION ALL
+    SELECT * from `bitlabs-dab.I_CID_05.employees_2011`
+),
+cleaned_data as(
+SELECT  *,
+  CAST(EmployeeID AS STRING) AS id, 
+  CAST(store_name AS string) AS store,
+  CAST(STATUS_YEAR AS STRING) AS statsyear,
+  CAST(recorddate_key AS DATETIME) AS record_date
+FROM joined_table
+WHERE STATUS = 'ACTIVE'
+),
+equality_data as(
+select EmployeeID, gender_short,
+  case
+  when date_diff(record_date, birthdate_key, year) <= 30 then '30 years and less'
+  when date_diff(record_date, birthdate_key, year) >= 31 and date_diff(record_date, birthdate_key, year) <= 40 then '30-40 years'
+  when date_diff(record_date, birthdate_key, year) >= 41 and date_diff(record_date, birthdate_key, year) <= 50 then '40-50 years'
+  when date_diff(record_date, birthdate_key, year) >= 51 and date_diff(record_date, birthdate_key, year) <= 60 then '50-60 years'
+  else '60 years and above'
+  end as age_group
+from cleaned_data
+)
+select 
+  count(distinct EmployeeID) as total_employee, 
+  age_group, 
+  gender_short,
+  concat(round(count(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY age_group), 2), '%') AS percentage
+from equality_data
+group by age_group, gender_short
+order by age_group asc
+-- Based on the data, the company is succeeded in maintain a roughly equal number of male and female across the age group, with less than 3% deviation with the "above 60 years" as the exception
+
+-- Question 5
+-- Top 3 Departments and City in terms of hiring
+-- Note: new joiners defined by the employees that joined the company in less or equal to 6 months
+WITH joined_table AS (
+    SELECT * FROM `bitlabs-dab.I_CID_05.employees_2010`
+    UNION ALL
+    SELECT * from `bitlabs-dab.I_CID_05.employees_2011`
+),
+cleaned_data as(
+SELECT  *,
+  CAST(EmployeeID AS STRING) AS id, 
+  CAST(store_name AS string) AS store,
+  CAST(STATUS_YEAR AS STRING) AS statsyear,
+  CAST(recorddate_key AS DATETIME) AS record_date
+FROM joined_table
+WHERE STATUS = 'ACTIVE'
+),
+rank_data as (
+select 
+  EmployeeID,
+  department_name, city_name, 
+  date_diff(record_date, orighiredate_key, month) as join_key
+from cleaned_data
+)
+select count(distinct EmployeeID) as new_joiners, department_name, city_name
+from rank_data
+where join_key <= 6
+group by department_name, city_name
+order by new_joiners desc
+--- Top 3 departments and city in terms in hiring is won by Bakery department in Vancover with 28 new joiners
+--- followed by Dairy departement then Customer Service department in Nanaimo with 27 and 22 new joiners sequentally
