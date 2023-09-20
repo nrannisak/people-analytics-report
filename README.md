@@ -1,2 +1,2 @@
 # people-analytics-report
-SQL and Python for Annual People Analytics Report
+SQL for Annual People Analytics Report
